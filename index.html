@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canteen Management</title>
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getDatabase, ref, set, push, onValue, update, get } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyA2ZYXb2os2EmQcV8cDkpSqiCrpg4pbV-w",
+      authDomain: "canteen-management-522ee.firebaseapp.com",
+      databaseURL: "https://canteen-management-522ee-default-rtdb.firebaseio.com",
+      projectId: "canteen-management-522ee",
+      storageBucket: "canteen-management-522ee.firebasestorage.app",
+      messagingSenderId: "419983098095",
+      appId: "1:419983098095:web:f9bb890b545ab2fe9bdb1a"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);  // Initialize the Firebase Database
+
+    // Get references to HTML elements
+    const orderForm = document.getElementById('order-form');
+    const studentNameInput = document.getElementById('student-name');
+    const orderItemInput = document.getElementById('order-item');
+    const orderList = document.getElementById('order-list');
+
+    // Reference to Firebase Realtime Database (orders node)
+    const ordersRef = ref(database, 'orders');
+
+    // Function to handle order submission
+    orderForm.addEventListener('submit', function(event) {
+      event.preventDefault();  // Prevent default form submission
+
+      // Get the values from the input fields
+      const studentName = studentNameInput.value;
+      const orderItem = orderItemInput.value;
+
+      // Create a new order in the database
+      const newOrderRef = push(ordersRef);
+      set(newOrderRef, {
+        studentName: studentName,
+        orderItem: orderItem,
+        status: 'Pending',  // Default status is 'Pending'
+      });
+
+      // Clear the input fields after submission
+      studentNameInput.value = '';
+      orderItemInput.value = '';
+    });
+
+    // Listen for new orders in Firebase and update the order list in real-time
+    onValue(ordersRef, function(snapshot) {
+      orderList.innerHTML = '';  // Clear the order list before reloading
+
+      snapshot.forEach(function(childSnapshot) {
+        const order = childSnapshot.val();
+        const orderId = childSnapshot.key;
+
+        // Create a new HTML element to display the order
+        const orderElement = document.createElement('div');
+        orderElement.classList.add('order');
+        orderElement.setAttribute('id', `order-${orderId}`);
+        orderElement.innerHTML = `
+          <h3>${order.studentName}</h3>
+          <p>Order: ${order.orderItem}</p>
+          <p>Status: <span id="status-${orderId}">${order.status}</span></p>
+          <button onclick="updateStatus('${orderId}')">Update Status</button>
+        `;
+
+        // If status is 'Completed', hide the order from the UI
+        if (order.status === 'Completed') {
+          orderElement.style.display = 'none'; // Hide the order from the frontend
+        }
+
+        // Append the order to the list
+        orderList.appendChild(orderElement);
+      });
+    });
+
+    // Function to update the status of an order
+    window.updateStatus = function(orderId) {
+      const orderRef = ref(database, 'orders/' + orderId);
+      get(orderRef).then(function(snapshot) {
+        const order = snapshot.val();
+        let newStatus = '';
+
+        // Cycle through order statuses
+        if (order.status === 'Pending') {
+          newStatus = 'Preparing';
+        } else if (order.status === 'Preparing') {
+          newStatus = 'Ready';
+        } else if (order.status === 'Ready') {
+          newStatus = 'Completed';
+        }
+
+        // Update the order status in the database
+        update(orderRef, { status: newStatus });
+
+        // Update the status text in the UI
+        document.getElementById('status-' + orderId).textContent = newStatus;
+
+        // If the order is completed, hide it from the UI (but still keep it in the database)
+        if (newStatus === 'Completed') {
+          document.getElementById(`order-${orderId}`).style.display = 'none';
+        }
+      });
+    };
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>Canteen Order Management</h1>
+
+    <div id="order-list">
+      <!-- Orders will appear here -->
+    </div>
+
+    <form id="order-form">
+      <input type="text" id="student-name" placeholder="Your Name" required />
+      <input type="text" id="order-item" placeholder="Order Item" required />
+      <button type="submit">Place Order</button>
+    </form>
+  </div>
+</body>
+</html>
