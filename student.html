@@ -41,7 +41,17 @@
           <div class="cart-summary">
             <h3>Total: ₹<span id="cart-total">0</span></h3>
             <button id="checkout-btn">Proceed to Checkout</button>
-          </div>
+
+          <script>
+            document.getElementById("checkout-btn").addEventListener("click", function () {
+            window.location.href = "check.html"; // change to your UPI page path
+           });
+          </script>
+
+
+
+
+        </div>
         </div>
 
         <div id="orders-section" class="hidden">
