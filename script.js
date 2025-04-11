@@ -245,7 +245,7 @@ function redirectToDashboard(type) {
     }
     
     // Open in new tab
-    window.open(dashboardUrl, '_blank');
+    window.open(dashboardUrl, '_self');
 }
 
 // Show appropriate dashboard based on user type
