@@ -35,11 +35,14 @@ const adminDashboard = document.getElementById('admin-dashboard');
 // Student dashboard elements
 const studentMenuBtn = document.getElementById('student-menu-btn');
 const studentCartBtn = document.getElementById('student-cart-btn');
+const studentOrdersBtn = document.getElementById('student-orders-btn');
 const studentLogoutBtn = document.getElementById('student-logout-btn');
 const menuSection = document.getElementById('menu-section');
 const cartSection = document.getElementById('cart-section');
+const ordersSection = document.getElementById('orders-section');
 const menuItemsContainer = document.getElementById('menu-items');
 const cartItemsContainer = document.getElementById('cart-items');
+const studentOrderList = document.getElementById('student-order-list');
 const cartTotal = document.getElementById('cart-total');
 const cartCount = document.getElementById('cart-count');
 const checkoutBtn = document.getElementById('checkout-btn');
@@ -82,6 +85,7 @@ if (loginForm) loginForm.addEventListener('submit', handleLogin);
 
 if (studentMenuBtn) studentMenuBtn.addEventListener('click', () => toggleStudentSection('menu'));
 if (studentCartBtn) studentCartBtn.addEventListener('click', () => toggleStudentSection('cart'));
+if (studentOrdersBtn) studentOrdersBtn.addEventListener('click', () => toggleStudentSection('orders'));
 if (studentLogoutBtn) studentLogoutBtn.addEventListener('click', logout);
 
 if (staffOrdersBtn) staffOrdersBtn.addEventListener('click', () => toggleStaffSection('orders'));
@@ -124,6 +128,7 @@ function init() {
                             case 'student':
                                 if (menuItemsContainer) loadMenuItems();
                                 if (cartCount) loadCart();
+                                if (studentOrderList) loadStudentOrders();
                                 break;
                             case 'staff':
                                 if (staffMenuItems) loadMenuItems();
@@ -197,7 +202,7 @@ function handleLogin(e) {
         })
         .then((type) => {
             if (type === 'admin') {
-                storeAdminCredentials();  // <-- Add this line
+                storeAdminCredentials();
             }
         })
         .catch((error) => {
@@ -245,7 +250,7 @@ function redirectToDashboard(type) {
     }
     
     // Open in new tab
-    window.open(dashboardUrl, '_self');
+    window.open(dashboardUrl, '_blank');
 }
 
 // Show appropriate dashboard based on user type
@@ -275,13 +280,22 @@ function showDashboard() {
 
 // Toggle student sections
 function toggleStudentSection(section) {
-    if (section === 'menu') {
-        menuSection.classList.remove('hidden');
-        cartSection.classList.add('hidden');
-    } else {
-        menuSection.classList.add('hidden');
-        cartSection.classList.remove('hidden');
-        renderCart();
+    menuSection.classList.add('hidden');
+    cartSection.classList.add('hidden');
+    ordersSection.classList.add('hidden');
+
+    switch(section) {
+        case 'menu':
+            menuSection.classList.remove('hidden');
+            break;
+        case 'cart':
+            cartSection.classList.remove('hidden');
+            renderCart();
+            break;
+        case 'orders':
+            ordersSection.classList.remove('hidden');
+            loadStudentOrders();
+            break;
     }
 }
 
@@ -482,55 +496,113 @@ function removeItem(e) {
 }
 
 // Handle checkout
-function handleCheckout() {
-    if (cart.length === 0) {
-        alert("Your cart is empty!");
-        return;
-    }
+async function handleCheckout() {
+    try {
+        if (!currentUser) throw new Error("Please login first");
+        if (cart.length === 0) throw new Error("Your cart is empty");
 
-    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    
-    // Create order object
-    const order = {
-        studentId: currentUser.uid,
-        studentName: currentUser.email.split('@')[0],
-        items: cart,
-        total: total,
-        status: 'Pending',
-        timestamp: firebase.database.ServerValue.TIMESTAMP
-    };
-
-    // Show loading state
-    checkoutBtn.disabled = true;
-    checkoutBtn.textContent = 'Placing Order...';
-
-    // Save to Firebase
-    database.ref('orders').push(order)
-        .then(() => {
-            // Clear cart on success
-            cart = [];
-            saveCart();
-            updateCartCount();
-            renderCart();
-            
-            // Show success message
-            alert(`Order placed successfully! Total: ₹${total}`);
-        })
-        .catch(error => {
-            console.error("Order placement error:", error);
-            
-            // More specific error messages
-            if (error.message.includes('PERMISSION_DENIED')) {
-                alert('Error: You dont have permission to place orders. Please contact support.');
-            } else {
-                alert(`Order failed: ${error.message}`);
-            }
-        })
-        .finally(() => {
-            // Reset button state
-            checkoutBtn.disabled = false;
-            checkoutBtn.textContent = 'Proceed to Checkout';
+        // Convert cart array to items object EXACTLY as rules expect
+        const itemsObj = {};
+        cart.forEach((item, index) => {
+            itemsObj[`item${index}`] = {  // Must use this format (object with keys)
+                id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity
+            };
         });
+
+        // Create order data that MATCHES the rules exactly
+        const orderData = {
+            studentId: currentUser.uid,
+            studentName: currentUser.email.split('@')[0],
+            items: itemsObj,  // Must be object, not array
+            total: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+            status: "Pending", // Must be exactly "Pending"
+            createdAt: firebase.database.ServerValue.TIMESTAMP
+        };
+
+        // Debug: log the exact structure being sent
+        console.log("Order data being sent:", JSON.stringify(orderData, null, 2));
+
+        // Push to Firebase
+        const orderRef = database.ref('orders').push();
+        await orderRef.set(orderData);
+
+        // Clear cart on success
+        cart = [];
+        saveCart();
+        alert(`Order #${orderRef.key} placed successfully!`);
+        
+        // Show the orders section after checkout
+        toggleStudentSection('orders');
+        
+    } catch (error) {
+        console.error("Checkout error:", error);
+        alert(`Checkout failed: ${error.message}`);
+    }
+}
+
+// Load student orders
+function loadStudentOrders() {
+    if (!currentUser) return;
+
+    studentOrderList.innerHTML = '<p class="loading">Loading your orders...</p>';
+
+    database.ref('orders')
+        .orderByChild('studentId')
+        .equalTo(currentUser.uid)
+        .on('value', snapshot => {
+            studentOrderList.innerHTML = '';
+
+            if (!snapshot.exists()) {
+                studentOrderList.innerHTML = '<p class="no-orders">You have no orders yet.</p>';
+                return;
+            }
+
+            snapshot.forEach(childSnapshot => {
+                const order = childSnapshot.val();
+                order.id = childSnapshot.key;
+                renderStudentOrder(order);
+            });
+        });
+}
+
+// Render student order
+function renderStudentOrder(order) {
+    const orderCard = document.createElement('div');
+    orderCard.className = 'order-card';
+    
+    // Convert items object to array if needed
+    const itemsArray = typeof order.items === 'object' ? Object.values(order.items) : order.items;
+    
+    orderCard.innerHTML = `
+        <div class="order-header">
+            <span class="order-id">Order #${order.id}</span>
+            <span class="order-time">${formatOrderTime(order.createdAt)}</span>
+            <span class="order-status status-${order.status.toLowerCase()}">${order.status}</span>
+        </div>
+        <div class="order-items">
+            ${itemsArray.map(item => `
+                <div class="order-item">
+                    <span>${item.name} x ${item.quantity}</span>
+                    <span>₹${item.price * item.quantity}</span>
+                </div>
+            `).join('')}
+        </div>
+        <div class="order-total">
+            <strong>Total: ₹${order.total}</strong>
+        </div>
+    `;
+    
+    studentOrderList.appendChild(orderCard);
+}
+
+// Format order time
+function formatOrderTime(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleString();
 }
 
 // Load orders for staff
@@ -559,7 +631,7 @@ function renderOrder(order) {
         <span class="order-status status-${order.status.toLowerCase()}">${order.status}</span>
       </div>
       <div class="order-items">
-        ${order.items.map(item => `
+        ${Object.values(order.items).map(item => `
           <div class="order-item">
             <span>${item.name} x ${item.quantity}</span>
             <span>₹${item.price * item.quantity}</span>
