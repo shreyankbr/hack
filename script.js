@@ -695,7 +695,7 @@ function renderStaffMenuItems() {
             <p class="menu-item-desc">${item.description || ''}</p>
             <p class="menu-item-price">₹${item.price}</p>
             <div class="menu-item-actions">
-              <button class="${item.soldOut ? 'add-to-cart' : 'sold-out'}" data-id="${item.id}">
+              <button class="${item.soldOut ? 'mark-available' : 'mark-sold-out'}" data-id="${item.id}">
                 ${item.soldOut ? 'Mark Available' : 'Mark Sold Out'}
               </button>
             </div>
@@ -705,26 +705,50 @@ function renderStaffMenuItems() {
     });
 
     // Add event listeners to toggle sold out status
-    document.querySelectorAll('.menu-item-actions button').forEach(button => {
+    document.querySelectorAll('.mark-sold-out, .mark-available').forEach(button => {
         button.addEventListener('click', toggleSoldOutStatus);
     });
 }
 
 // Toggle sold out status
 function toggleSoldOutStatus(e) {
-    const itemId = e.target.getAttribute('data-id');
-    const itemRef = database.ref(`menu/${itemId}`);
+    const button = e.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Updating...';
 
-    itemRef.once('value')
+    const itemId = button.getAttribute('data-id');
+    const itemRef = database.ref(`menu/${itemId}`);
+    const isCurrentlySoldOut = originalText.trim() === 'Mark Available';
+
+    // First check if user is authorized
+    database.ref(`users/${auth.currentUser.uid}/type`).once('value')
         .then(snapshot => {
-            const item = snapshot.val();
-            return itemRef.update({ soldOut: !item.soldOut });
+            const userType = snapshot.val();
+            if (userType !== 'admin' && userType !== 'staff') {
+                throw new Error('PERMISSION_DENIED: Only staff and admin can update menu items');
+            }
+            
+            // Then update the item status
+            return itemRef.update({ soldOut: !isCurrentlySoldOut });
+        })
+        .then(() => {
+            console.log(`Item ${itemId} status updated successfully`);
+            // The real-time listener will update the UI automatically
         })
         .catch(error => {
             console.error('Error updating item status:', error);
+            button.disabled = false;
+            button.textContent = originalText;
+            
+            // More specific error messages
+            if (error.message.includes('PERMISSION_DENIED')) {
+                alert('You do not have permission to update menu items');
+            } else {
+                alert('Failed to update item status. Please try again.\nError: ' + error.message);
+            }
         });
 }
-
 // Render menu items for admin
 function renderAdminMenuItems() {
     adminMenuItems.innerHTML = '';
