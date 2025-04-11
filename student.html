@@ -17,6 +17,7 @@
         <div class="nav-buttons">
           <button id="student-menu-btn">Menu</button>
           <button id="student-cart-btn">Cart (<span id="cart-count">0</span>)</button>
+          <button id="student-orders-btn">My Orders</button>
           <button id="student-logout-btn">Logout</button>
         </div>
       </div>
@@ -34,6 +35,11 @@
             <h3>Total: ₹<span id="cart-total">0</span></h3>
             <button id="checkout-btn">Proceed to Checkout</button>
           </div>
+        </div>
+
+        <div id="orders-section" class="hidden">
+          <h2>My Orders</h2>
+          <div id="student-order-list"></div>
         </div>
       </div>
     </div>
